@@ -50,6 +50,12 @@ func (r *MachineEphemeralNetworkInterfaceReconciler) Reconcile(ctx context.Conte
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// TODO remove this check when migration is done
+	if _, ok := machine.Labels["osc.t-systems.com/postpone-reconciliation"]; ok {
+		log.V(1).Info("found TSI postpone label, requeueing")
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	return r.reconcileExists(ctx, log, machine)
 }
 

@@ -310,6 +310,12 @@ func (r *MachineReconciler) reconcile(ctx context.Context, log logr.Logger, mach
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// TODO remove this check when migration is done
+	if _, ok := machine.Labels["osc.t-systems.com/postpone-reconciliation"]; ok {
+		log.V(1).Info("found TSI postpone label, requeueing")
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	nics, err := r.getNetworkInterfacesForMachine(ctx, machine)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("error getting network interfaces for machine: %w", err)
