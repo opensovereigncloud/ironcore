@@ -442,8 +442,8 @@ func (r *VolumeReconciler) update(ctx context.Context, log logr.Logger, volume *
 	return nil
 }
 
-func (r *VolumeReconciler) volumeSecretName(volumeUID string, volumeHandle string) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s/%s", volumeUID, volumeHandle)))
+func (r *VolumeReconciler) volumeSecretName(volumeName string, volumeHandle string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s/%s", volumeName, volumeHandle)))
 	return hex.EncodeToString(sum[:])[:63]
 }
 
@@ -476,16 +476,21 @@ func (r *VolumeReconciler) updateStatus(ctx context.Context, log logr.Logger, vo
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: volume.Namespace,
-						Name:      r.volumeSecretName(string(volume.UID), iriAccess.Handle),
+						Name:      r.volumeSecretName(volume.Name, iriAccess.Handle),
 						Labels: map[string]string{
 							volumepoolletv1alpha1.VolumeUIDLabel: string(volume.UID),
 						},
 					},
 					Data: iriAccess.SecretData,
 				}
-				_ = ctrl.SetControllerReference(volume, volumeSecret, r.Scheme)
-				if err := r.Patch(ctx, volumeSecret, client.Apply, client.FieldOwner(volumepoolletv1alpha1.FieldOwner)); err != nil {
-					return fmt.Errorf("error applying volume secret: %w", err)
+				// TODO balpert: remove this once migration is done and onmetal resources have been cleaned up.
+				// the secret will only be applied when the secret does not already exist.
+				existingVolume := &corev1.Secret{}
+				if err := r.Get(ctx, types.NamespacedName{Namespace: volumeSecret.Namespace, Name: volumeSecret.Name}, existingVolume); apierrors.IsNotFound(err) {
+					_ = ctrl.SetControllerReference(volume, volumeSecret, r.Scheme)
+					if err := r.Patch(ctx, volumeSecret, client.Apply, client.FieldOwner(volumepoolletv1alpha1.FieldOwner)); err != nil {
+						return fmt.Errorf("error applying volume secret: %w", err)
+					}
 				}
 				secretRef = &corev1.LocalObjectReference{Name: volumeSecret.Name}
 			} else {
