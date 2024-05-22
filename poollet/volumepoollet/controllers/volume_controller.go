@@ -9,6 +9,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-logr/logr"
 	"github.com/ironcore-dev/controller-utils/clientutils"
 	corev1alpha1 "github.com/ironcore-dev/ironcore/api/core/v1alpha1"
@@ -20,8 +23,6 @@ import (
 	"github.com/ironcore-dev/ironcore/poollet/volumepoollet/vcm"
 	ironcoreclient "github.com/ironcore-dev/ironcore/utils/client"
 	"github.com/ironcore-dev/ironcore/utils/predicates"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -441,8 +442,8 @@ func (r *VolumeReconciler) update(ctx context.Context, log logr.Logger, volume *
 	return nil
 }
 
-func (r *VolumeReconciler) volumeSecretName(volumeName string, volumeHandle string) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s/%s", volumeName, volumeHandle)))
+func (r *VolumeReconciler) volumeSecretName(volumeUID string, volumeHandle string) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s/%s", volumeUID, volumeHandle)))
 	return hex.EncodeToString(sum[:])[:63]
 }
 
@@ -475,7 +476,7 @@ func (r *VolumeReconciler) updateStatus(ctx context.Context, log logr.Logger, vo
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: volume.Namespace,
-						Name:      r.volumeSecretName(volume.Name, iriAccess.Handle),
+						Name:      r.volumeSecretName(string(volume.UID), iriAccess.Handle),
 						Labels: map[string]string{
 							volumepoolletv1alpha1.VolumeUIDLabel: string(volume.UID),
 						},
