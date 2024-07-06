@@ -4,11 +4,13 @@
 package validation
 
 import (
+	commonv1alpha1 "github.com/ironcore-dev/ironcore/api/common/v1alpha1"
 	"github.com/ironcore-dev/ironcore/internal/apis/networking"
 	. "github.com/ironcore-dev/ironcore/internal/testutils/validation"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -67,6 +69,90 @@ var _ = Describe("Network", func() {
 				},
 			},
 			ContainElement(DuplicateField("spec.peerings[1].networkRef")),
+		),
+		Entry("peering claim references itself",
+			&networking.Network{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "foo"},
+				Spec: networking.NetworkSpec{
+					PeeringClaimRefs: []networking.NetworkPeeringClaimRef{
+						{
+							Name:      "foo",
+							Namespace: "ns",
+						},
+					},
+				},
+			},
+			ContainElement(ForbiddenField("spec.incomingPeerings[0]")),
+		),
+		Entry("duplicate peering claim ref",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					PeeringClaimRefs: []networking.NetworkPeeringClaimRef{
+						{Name: "bar"},
+						{Name: "bar"},
+					},
+				},
+			},
+			ContainElement(DuplicateField("spec.incomingPeerings[1]")),
+		),
+		Entry("invalid peering claim ref name",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					PeeringClaimRefs: []networking.NetworkPeeringClaimRef{
+						{Name: "bar*"},
+					},
+				},
+			},
+			ContainElement(InvalidField("spec.incomingPeerings[0].name")),
+		),
+		Entry("invalid peering claim ref namespace",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					PeeringClaimRefs: []networking.NetworkPeeringClaimRef{
+						{Namespace: "ns*"},
+					},
+				},
+			},
+			ContainElements(InvalidField("spec.incomingPeerings[0].namespace"),
+				RequiredField("spec.incomingPeerings[0].name")),
+		),
+		Entry("duplicate peering prefix name",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					Peerings: []networking.NetworkPeering{{
+						Prefixes: []networking.PeeringPrefix{
+							{Name: "peering"},
+							{Name: "peering"},
+						}},
+					},
+				},
+			},
+			ContainElement(DuplicateField("spec.peerings[0].prefixes[1].name")),
+		),
+		Entry("bad peering prefix cidr",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					Peerings: []networking.NetworkPeering{{
+						Prefixes: []networking.PeeringPrefix{
+							{Prefix: &commonv1alpha1.IPPrefix{}},
+						}},
+					},
+				},
+			},
+			ContainElement(ForbiddenField("spec.peerings[0].prefixes[0].prefix")),
+		),
+		Entry("duplicate peering prefix ref",
+			&networking.Network{
+				Spec: networking.NetworkSpec{
+					Peerings: []networking.NetworkPeering{{
+						Prefixes: []networking.PeeringPrefix{
+							{PrefixRef: corev1.LocalObjectReference{Name: "foo"}},
+							{PrefixRef: corev1.LocalObjectReference{Name: "foo"}},
+						}},
+					},
+				},
+			},
+			ContainElement(DuplicateField("spec.peerings[0].prefixes[1].prefixRef")),
 		),
 	)
 

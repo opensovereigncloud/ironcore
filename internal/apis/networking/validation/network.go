@@ -28,6 +28,9 @@ func validateNetworkSpec(namespace, name string, spec *networking.NetworkSpec, f
 	seenNames := sets.New[string]()
 	seenPeeringNetworkKeys := sets.New[client.ObjectKey]()
 
+	seenPrefixNames := sets.New[string]()
+	seenPeeringPrefixKeys := sets.New[client.ObjectKey]()
+
 	for i, peering := range spec.Peerings {
 		fldPath := fldPath.Child("peerings").Index(i)
 		if seenNames.Has(peering.Name) {
@@ -51,7 +54,56 @@ func validateNetworkSpec(namespace, name string, spec *networking.NetworkSpec, f
 			seenPeeringNetworkKeys.Insert(peeringNetworkKey)
 		}
 
+		for j, prefix := range peering.Prefixes {
+			fldPath := fldPath.Child("prefixes").Index(j)
+
+			if seenPrefixNames.Has(prefix.Name) {
+				allErrs = append(allErrs, field.Duplicate(fldPath.Child("name"), prefix.Name))
+			} else {
+				seenPrefixNames.Insert(prefix.Name)
+			}
+
+			if peeringPrefix := prefix.Prefix; peeringPrefix != nil {
+				if !peeringPrefix.IsSingleIP() {
+					allErrs = append(allErrs, field.Forbidden(fldPath.Child("prefix"), "must be a single IP"))
+				}
+			}
+
+			peeringPrefixKey := client.ObjectKey{Namespace: namespace, Name: prefix.PrefixRef.Name}
+
+			if seenPeeringPrefixKeys.Has(peeringPrefixKey) {
+				allErrs = append(allErrs, field.Duplicate(fldPath.Child("prefixRef"), prefix.PrefixRef))
+			} else {
+				seenPeeringPrefixKeys.Insert(peeringPrefixKey)
+			}
+
+			allErrs = append(allErrs, validatePeeringPrefix(prefix, fldPath)...)
+		}
+
 		allErrs = append(allErrs, validateNetworkPeering(peering, fldPath)...)
+	}
+
+	seenPeeringClaimRefKeys := sets.New[client.ObjectKey]()
+
+	for i, peeringClaimRef := range spec.PeeringClaimRefs {
+		fldPath := fldPath.Child("incomingPeerings").Index(i)
+
+		peeringClaimRefNamespace := peeringClaimRef.Namespace
+		if peeringClaimRefNamespace == "" {
+			peeringClaimRefNamespace = namespace
+		}
+
+		peeringClaimRefkKey := client.ObjectKey{Namespace: peeringClaimRefNamespace, Name: peeringClaimRef.Name}
+
+		if name != "" && (client.ObjectKey{Namespace: namespace, Name: name}) == peeringClaimRefkKey {
+			allErrs = append(allErrs, field.Forbidden(fldPath, "cannot claim itself"))
+		} else if seenPeeringClaimRefKeys.Has(peeringClaimRefkKey) {
+			allErrs = append(allErrs, field.Duplicate(fldPath, peeringClaimRef))
+		} else {
+			seenPeeringClaimRefKeys.Insert(peeringClaimRefkKey)
+		}
+
+		allErrs = append(allErrs, validatePeeringClaimRef(peeringClaimRef, fldPath)...)
 	}
 
 	return allErrs
@@ -72,6 +124,42 @@ func validateNetworkPeering(peering networking.NetworkPeering, fldPath *field.Pa
 	}
 	for _, msg := range apivalidation.NameIsDNSLabel(networkRef.Name, false) {
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("networkRef", "name"), networkRef.Name, msg))
+	}
+
+	return allErrs
+}
+
+func validatePeeringClaimRef(peeringClaimRef networking.NetworkPeeringClaimRef, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	if len(peeringClaimRef.Name) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "name is required"))
+	} else {
+		for _, msg := range apivalidation.NameIsDNSLabel(peeringClaimRef.Name, false) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), peeringClaimRef.Name, msg))
+		}
+	}
+
+	if peeringClaimRef.Namespace != "" {
+		for _, msg := range apivalidation.NameIsDNSLabel(peeringClaimRef.Namespace, false) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("namespace"), peeringClaimRef.Namespace, msg))
+		}
+	}
+	return allErrs
+}
+
+func validatePeeringPrefix(prefix networking.PeeringPrefix, fldPath *field.Path) field.ErrorList {
+	var allErrs field.ErrorList
+
+	for _, msg := range apivalidation.NameIsDNSLabel(prefix.Name, false) {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), prefix.Name, msg))
+	}
+
+	prefixRef := prefix.PrefixRef
+	if prefixRef.Name != "" {
+		for _, msg := range apivalidation.NameIsDNSLabel(prefixRef.Name, false) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("prefixRef", "name"), prefixRef.Name, msg))
+		}
 	}
 
 	return allErrs
