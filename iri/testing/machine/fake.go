@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	irievent "github.com/ironcore-dev/ironcore/iri/apis/event/v1alpha1"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -62,18 +63,38 @@ type FakeMachineClassStatus struct {
 	iri.MachineClassStatus
 }
 
+type FakeEvent struct {
+	irievent.Event
+}
+
 type FakeRuntimeService struct {
 	sync.Mutex
 
 	Machines           map[string]*FakeMachine
 	MachineClassStatus map[string]*FakeMachineClassStatus
 	GetExecURL         func(req *iri.ExecRequest) string
+	Events             []*FakeEvent
+}
+
+// ListEvents implements machine.RuntimeService.
+func (r *FakeRuntimeService) ListEvents(ctx context.Context, req *iri.ListEventsRequest) (*iri.ListEventsResponse, error) {
+	r.Lock()
+	defer r.Unlock()
+
+	var res []*irievent.Event
+	for _, e := range r.Events {
+		event := e.Event
+		res = append(res, &event)
+	}
+
+	return &iri.ListEventsResponse{Events: res}, nil
 }
 
 func NewFakeRuntimeService() *FakeRuntimeService {
 	return &FakeRuntimeService{
 		Machines:           make(map[string]*FakeMachine),
 		MachineClassStatus: make(map[string]*FakeMachineClassStatus),
+		Events:             []*FakeEvent{},
 	}
 }
 
@@ -102,6 +123,13 @@ func (r *FakeRuntimeService) SetGetExecURL(f func(req *iri.ExecRequest) string) 
 	defer r.Unlock()
 
 	r.GetExecURL = f
+}
+
+func (r *FakeRuntimeService) SetEvents(events []*FakeEvent) {
+	r.Lock()
+	defer r.Unlock()
+
+	r.Events = events
 }
 
 func (r *FakeRuntimeService) Version(ctx context.Context, req *iri.VersionRequest) (*iri.VersionResponse, error) {

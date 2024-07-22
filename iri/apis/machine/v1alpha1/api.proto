@@ -5,6 +5,7 @@ option go_package = "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "github.com/ironcore-dev/ironcore/iri/apis/meta/v1alpha1/api.proto";
+import "github.com/ironcore-dev/ironcore/iri/apis/event/v1alpha1/api.proto";
 
 option (gogoproto.goproto_stringer_all) = false;
 option (gogoproto.stringer_all) = true;
@@ -16,6 +17,7 @@ option (gogoproto.goproto_unrecognized_all) = false;
 
 service MachineRuntime {
   rpc Version(VersionRequest) returns (VersionResponse) {};
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {};
 
   rpc ListMachines(ListMachinesRequest) returns (ListMachinesResponse) {};
   rpc CreateMachine(CreateMachineRequest) returns (CreateMachineResponse) {};
@@ -42,6 +44,13 @@ message VolumeSpec {
 message MachineFilter {
   string id = 1;
   map<string, string> label_selector = 2;
+}
+
+message EventFilter {
+  string id = 1;
+  map<string, string> label_selector = 2;
+  int64 events_from_time = 3;
+  int64 events_to_time = 4;
 }
 
 message MachineClassCapabilities {
@@ -166,6 +175,14 @@ message ListMachinesRequest {
 
 message ListMachinesResponse {
   repeated Machine machines = 1;
+}
+
+message ListEventsRequest {
+  EventFilter filter = 1;
+}
+
+message ListEventsResponse {
+  repeated event.v1alpha1.Event events = 1;
 }
 
 message CreateMachineRequest {
