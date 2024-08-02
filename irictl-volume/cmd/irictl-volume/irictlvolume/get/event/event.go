@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
-	"github.com/ironcore-dev/ironcore/irictl-machine/cmd/irictl-machine/irictlmachine/common"
+	iri "github.com/ironcore-dev/ironcore/iri/apis/volume/v1alpha1"
+	"github.com/ironcore-dev/ironcore/irictl-volume/cmd/irictl-volume/irictlvolume/common"
 	clicommon "github.com/ironcore-dev/ironcore/irictl/cmd"
 	"github.com/ironcore-dev/ironcore/irictl/renderer"
 	"github.com/spf13/cobra"
@@ -27,10 +27,10 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVarP(&o.Duration, "duration", "d", 60*time.Minute, "Duration to filter the events by.")
 }
 
-func Command(streams clicommon.Streams, clientFactory common.Factory) *cobra.Command {
+func Command(streams clicommon.Streams, clientFactory common.ClientFactory) *cobra.Command {
 	var (
 		opts       Options
-		outputOpts = clientFactory.OutputOptions()
+		outputOpts = common.NewOutputOptions()
 	)
 
 	cmd := &cobra.Command{
@@ -39,7 +39,7 @@ func Command(streams clicommon.Streams, clientFactory common.Factory) *cobra.Com
 			ctx := cmd.Context()
 			log := ctrl.LoggerFrom(ctx)
 
-			client, cleanup, err := clientFactory.Client()
+			client, cleanup, err := clientFactory.New()
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func Command(streams clicommon.Streams, clientFactory common.Factory) *cobra.Com
 func Run(
 	ctx context.Context,
 	streams clicommon.Streams,
-	client iri.MachineRuntimeClient,
+	client iri.VolumeRuntimeClient,
 	render renderer.Renderer,
 	opts Options,
 ) error {
