@@ -81,6 +81,9 @@ type Options struct {
 	AddressesOptions addresses.GetOptions
 
 	WatchFilterValue string
+
+	QPS   float32
+	Burst int
 }
 
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
@@ -111,6 +114,9 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	o.AddressesOptions.BindFlags(fs)
 
 	fs.StringVar(&o.WatchFilterValue, "watch-filter", "", "Value to filter for while watching.")
+
+	fs.Float32VarP(&o.QPS, "qps", "", 100, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", 200, "Kubernetes client burst.")
 }
 
 func (o *Options) MarkFlagsRequired(cmd *cobra.Command) {
@@ -206,7 +212,10 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("error getting config: %w", err)
 	}
 
-	setupLog.Info("IRI client config", "ChannelCapacity", opts.ChannelCapacity, "RelistPeriod", opts.RelistPeriod, "RelistThreshold", opts.RelistThreshold)
+	setupLog.Info("IRI Client configuration", "ChannelCapacity", opts.ChannelCapacity, "RelistPeriod", opts.RelistPeriod, "RelistThreshold", opts.RelistThreshold)
+	cfg.QPS = opts.QPS
+	cfg.Burst = opts.Burst
+	setupLog.Info("Kubernetes Client configuration", "QPS", cfg.QPS, "Burst", cfg.Burst)
 
 	leaderElectionCfg, err := configutils.GetConfig(
 		configutils.Kubeconfig(opts.LeaderElectionKubeconfig),
