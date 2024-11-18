@@ -82,8 +82,9 @@ type Options struct {
 
 	WatchFilterValue string
 
-	QPS   float32
-	Burst int
+	QPS                     float32
+	Burst                   int
+	MaxConcurrentReconciles int
 }
 
 func (o *Options) AddFlags(fs *pflag.FlagSet) {
@@ -117,6 +118,7 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 
 	fs.Float32VarP(&o.QPS, "qps", "", 100, "Kubernetes client qps.")
 	fs.IntVar(&o.Burst, "burst", 200, "Kubernetes client burst.")
+	fs.IntVar(&o.MaxConcurrentReconciles, "max-concurrent-reconciles", 1, "Maximum number of concurrent reconciles.")
 }
 
 func (o *Options) MarkFlagsRequired(cmd *cobra.Command) {
@@ -322,16 +324,17 @@ func Run(ctx context.Context, opts Options) error {
 		}
 
 		if err := (&controllers.MachineReconciler{
-			EventRecorder:          mgr.GetEventRecorderFor("machines"),
-			Client:                 mgr.GetClient(),
-			MachineRuntime:         machineRuntime,
-			MachineRuntimeName:     version.RuntimeName,
-			MachineRuntimeVersion:  version.RuntimeVersion,
-			MachineClassMapper:     machineClassMapper,
-			MachinePoolName:        opts.MachinePoolName,
-			DownwardAPILabels:      opts.MachineDownwardAPILabels,
-			DownwardAPIAnnotations: opts.MachineDownwardAPIAnnotations,
-			WatchFilterValue:       opts.WatchFilterValue,
+			EventRecorder:           mgr.GetEventRecorderFor("machines"),
+			Client:                  mgr.GetClient(),
+			MachineRuntime:          machineRuntime,
+			MachineRuntimeName:      version.RuntimeName,
+			MachineRuntimeVersion:   version.RuntimeVersion,
+			MachineClassMapper:      machineClassMapper,
+			MachinePoolName:         opts.MachinePoolName,
+			DownwardAPILabels:       opts.MachineDownwardAPILabels,
+			DownwardAPIAnnotations:  opts.MachineDownwardAPIAnnotations,
+			WatchFilterValue:        opts.WatchFilterValue,
+			MaxConcurrentReconciles: opts.MaxConcurrentReconciles,
 		}).SetupWithManager(mgr); err != nil {
 			return fmt.Errorf("error setting up machine reconciler with manager: %w", err)
 		}
