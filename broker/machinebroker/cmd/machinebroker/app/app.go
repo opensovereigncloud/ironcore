@@ -25,6 +25,7 @@ import (
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 
 	"github.com/ironcore-dev/controller-utils/configutils"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -53,8 +54,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringToStringVar(&o.BrokerDownwardAPILabels, "broker-downward-api-label", nil, "The labels to broker via downward API. "+
 		"Example is for instance to broker \"root-machine-uid\" initially obtained via \"machinepoollet.ironcore.dev/machine-uid\".")
 
-	fs.Float32VarP(&o.QPS, "qps", "", 20, "Kubernetes client qps.")
-	fs.IntVar(&o.Burst, "burst", 30, "Kubernetes client burst.")
+	fs.Float32VarP(&o.QPS, "qps", "", rest.DefaultQPS, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", rest.DefaultBurst, "Kubernetes client burst.")
 
 	fs.StringVar(&o.Namespace, "namespace", o.Namespace, "Target Kubernetes namespace to use.")
 	fs.StringVar(&o.MachinePoolName, "machine-pool-name", o.MachinePoolName, "Name of the target machine pool to pin machines to, if any.")

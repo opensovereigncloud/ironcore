@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -95,8 +96,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&o.WatchFilterValue, "watch-filter", "", "Value to filter for while watching.")
 
-	fs.Float32VarP(&o.QPS, "qps", "", 20, "Kubernetes client qps.")
-	fs.IntVar(&o.Burst, "burst", 30, "Kubernetes client burst.")
+	fs.Float32VarP(&o.QPS, "qps", "", rest.DefaultQPS, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", rest.DefaultBurst, "Kubernetes client burst.")
 	fs.IntVar(&o.MaxConcurrentReconciles, "max-concurrent-reconciles", 1, "Maximum number of concurrent reconciles.")
 }
 
