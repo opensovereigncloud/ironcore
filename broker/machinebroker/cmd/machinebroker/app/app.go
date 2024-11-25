@@ -54,7 +54,7 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringToStringVar(&o.BrokerDownwardAPILabels, "broker-downward-api-label", nil, "The labels to broker via downward API. "+
 		"Example is for instance to broker \"root-machine-uid\" initially obtained via \"machinepoollet.ironcore.dev/machine-uid\".")
 
-	fs.Float32VarP(&o.QPS, "qps", "", defaults.QPS, "Kubernetes client qps.")
+	fs.Float32Var(&o.QPS, "qps", defaults.QPS, "Kubernetes client qps.")
 	fs.IntVar(&o.Burst, "burst", defaults.Burst, "Kubernetes client burst.")
 
 	fs.StringVar(&o.Namespace, "namespace", o.Namespace, "Target Kubernetes namespace to use.")

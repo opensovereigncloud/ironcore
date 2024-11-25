@@ -39,7 +39,7 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", o.Kubeconfig, "Path pointing to a kubeconfig file to use.")
 	fs.StringVar(&o.Address, "address", "/var/run/iri-bucketbroker.sock", "Address to listen on.")
 
-	fs.Float32VarP(&o.QPS, "qps", "", defaults.QPS, "Kubernetes client qps.")
+	fs.Float32Var(&o.QPS, "qps", defaults.QPS, "Kubernetes client qps.")
 	fs.IntVar(&o.Burst, "burst", defaults.Burst, "Kubernetes client burst.")
 
 	fs.StringVar(&o.Namespace, "namespace", o.Namespace, "Target Kubernetes namespace to use.")
