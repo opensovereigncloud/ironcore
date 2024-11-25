@@ -15,10 +15,10 @@ import (
 
 	"github.com/ironcore-dev/ironcore/broker/bucketbroker/server"
 	"github.com/ironcore-dev/ironcore/broker/common"
+	"github.com/ironcore-dev/ironcore/broker/common/defaults"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/bucket/v1alpha1"
 
 	"github.com/ironcore-dev/controller-utils/configutils"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -39,8 +39,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", o.Kubeconfig, "Path pointing to a kubeconfig file to use.")
 	fs.StringVar(&o.Address, "address", "/var/run/iri-bucketbroker.sock", "Address to listen on.")
 
-	fs.Float32VarP(&o.QPS, "qps", "", rest.DefaultQPS, "Kubernetes client qps.")
-	fs.IntVar(&o.Burst, "burst", rest.DefaultBurst, "Kubernetes client burst.")
+	fs.Float32VarP(&o.QPS, "qps", "", defaults.QPS, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", defaults.Burst, "Kubernetes client burst.")
 
 	fs.StringVar(&o.Namespace, "namespace", o.Namespace, "Target Kubernetes namespace to use.")
 	fs.StringVar(&o.BucketPoolName, "bucket-pool-name", o.BucketPoolName, "Name of the target bucket pool to pin buckets to, if any.")

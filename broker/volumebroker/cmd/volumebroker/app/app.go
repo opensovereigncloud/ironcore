@@ -14,11 +14,11 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/ironcore-dev/ironcore/broker/common"
+	"github.com/ironcore-dev/ironcore/broker/common/defaults"
 	"github.com/ironcore-dev/ironcore/broker/volumebroker/server"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/volume/v1alpha1"
 
 	"github.com/ironcore-dev/controller-utils/configutils"
-	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -39,8 +39,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&o.Kubeconfig, "kubeconfig", o.Kubeconfig, "Path pointing to a kubeconfig file to use.")
 	fs.StringVar(&o.Address, "address", "/var/run/iri-volumebroker.sock", "Address to listen on.")
 
-	fs.Float32VarP(&o.QPS, "qps", "", rest.DefaultQPS, "Kubernetes client qps.")
-	fs.IntVar(&o.Burst, "burst", rest.DefaultBurst, "Kubernetes client burst.")
+	fs.Float32VarP(&o.QPS, "qps", "", defaults.QPS, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", defaults.Burst, "Kubernetes client burst.")
 
 	fs.StringVar(&o.Namespace, "namespace", o.Namespace, "Target Kubernetes namespace to use.")
 	fs.StringVar(&o.VolumePoolName, "volume-pool-name", o.VolumePoolName, "Name of the target volume pool to pin volumes to, if any.")

@@ -18,6 +18,7 @@ import (
 	ipamv1alpha1 "github.com/ironcore-dev/ironcore/api/ipam/v1alpha1"
 	networkingv1alpha1 "github.com/ironcore-dev/ironcore/api/networking/v1alpha1"
 	storagev1alpha1 "github.com/ironcore-dev/ironcore/api/storage/v1alpha1"
+	"github.com/ironcore-dev/ironcore/poollet/common/defaults"
 	computeclient "github.com/ironcore-dev/ironcore/internal/client/compute"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 	iriremotemachine "github.com/ironcore-dev/ironcore/iri/remote/machine"
@@ -116,8 +117,8 @@ func (o *Options) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&o.WatchFilterValue, "watch-filter", "", "Value to filter for while watching.")
 
-	fs.Float32VarP(&o.QPS, "qps", "", rest.DefaultQPS, "Kubernetes client qps.")
-	fs.IntVar(&o.Burst, "burst", rest.DefaultBurst, "Kubernetes client burst.")
+	fs.Float32VarP(&o.QPS, "qps", "", defaults.QPS, "Kubernetes client qps.")
+	fs.IntVar(&o.Burst, "burst", defaults.Burst, "Kubernetes client burst.")
 	fs.IntVar(&o.MaxConcurrentReconciles, "max-concurrent-reconciles", 1, "Maximum number of concurrent reconciles.")
 }
 
