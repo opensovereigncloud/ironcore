@@ -146,7 +146,6 @@ var _ = Describe("MachineController", func() {
 				Name:   "primary",
 				Handle: "primary-handle",
 				State:  iri.NetworkInterfaceState_NETWORK_INTERFACE_ATTACHED,
-				Ips:    []string{"10.0.0.11"},
 			},
 		}
 		srv.SetMachines([]*testingmachine.FakeMachine{iriMachine})
@@ -295,27 +294,12 @@ var _ = Describe("MachineController", func() {
 				Name:   "primary",
 				Handle: "primary-handle",
 				State:  iri.NetworkInterfaceState_NETWORK_INTERFACE_ATTACHED,
-				Ips:    []string{"10.0.0.1"},
 			},
 		}
 		srv.SetMachines([]*testingmachine.FakeMachine{iriMachine})
 
-		Eventually(Object(nic)).Should(And(
-			HaveField("Spec.ProviderID", Equal("primary-handle")),
-			HaveField("Status", MatchFields(IgnoreExtras, Fields{
-				"State": Equal(networkingv1alpha1.NetworkInterfaceStateAvailable),
-				"IPs":   ContainElement(commonv1alpha1.MustParseIP("10.0.0.1")),
-			})),
-		))
-
-		Consistently(Object(nic)).Should(
-			HaveField("Status", MatchFields(IgnoreExtras, Fields{
-				"State": Equal(networkingv1alpha1.NetworkInterfaceStateAvailable),
-				"IPs":   ContainElement(commonv1alpha1.MustParseIP("10.0.0.1")),
-			})),
-		)
-
-		By("ensuring the ironcore machine status networkInterfaces to have correct NetworkInterfaceRef")
+		By("waiting for the ironcore network interface to have a provider id set")
+		Eventually(Object(nic)).Should(HaveField("Spec.ProviderID", "primary-handle"))
 		Eventually(Object(machine)).Should(HaveField("Status.NetworkInterfaces", ConsistOf(MatchFields(IgnoreExtras, Fields{
 			"Name":                Equal("primary"),
 			"Handle":              Equal("primary-handle"),
@@ -498,6 +482,155 @@ var _ = Describe("MachineController", func() {
 		}))))
 	})
 
+	It("should validate IRI volume update for machine", func(ctx SpecContext) {
+		By("creating a network")
+		network := &networkingv1alpha1.Network{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "network-",
+			},
+			Spec: networkingv1alpha1.NetworkSpec{
+				ProviderID: "foo",
+			},
+		}
+		Expect(k8sClient.Create(ctx, network)).To(Succeed())
+
+		By("patching the network to be available")
+		Eventually(UpdateStatus(network, func() {
+			network.Status.State = networkingv1alpha1.NetworkStateAvailable
+		})).Should(Succeed())
+
+		By("creating a network interface")
+		nic := &networkingv1alpha1.NetworkInterface{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "nic-",
+			},
+			Spec: networkingv1alpha1.NetworkInterfaceSpec{
+				NetworkRef: corev1.LocalObjectReference{Name: network.Name},
+				IPs: []networkingv1alpha1.IPSource{
+					{Value: commonv1alpha1.MustParseNewIP("10.0.0.1")},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, nic)).To(Succeed())
+
+		By("creating a volume")
+		volume := &storagev1alpha1.Volume{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "volume-",
+			},
+			Spec: storagev1alpha1.VolumeSpec{},
+		}
+		Expect(k8sClient.Create(ctx, volume)).To(Succeed())
+
+		By("patching the volume to be available")
+		Eventually(UpdateStatus(volume, func() {
+			volume.Status.State = storagev1alpha1.VolumeStateAvailable
+			volume.Status.Access = &storagev1alpha1.VolumeAccess{
+				Driver: "test",
+				Handle: "testhandle",
+			}
+		})).Should(Succeed())
+
+		secondaryVolume := &storagev1alpha1.Volume{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "volume-",
+			},
+			Spec: storagev1alpha1.VolumeSpec{},
+		}
+		Expect(k8sClient.Create(ctx, secondaryVolume)).To(Succeed())
+
+		By("patching the secondary volume to be available")
+		Eventually(UpdateStatus(secondaryVolume, func() {
+			secondaryVolume.Status.State = storagev1alpha1.VolumeStateAvailable
+			secondaryVolume.Status.Access = &storagev1alpha1.VolumeAccess{
+				Driver: "test",
+				Handle: "testhandle",
+			}
+		})).Should(Succeed())
+
+		By("creating a machine")
+		const fooAnnotationValue = "bar"
+		machine := &computev1alpha1.Machine{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:    ns.Name,
+				GenerateName: "machine-",
+				Annotations: map[string]string{
+					fooAnnotation: fooAnnotationValue,
+				},
+			},
+			Spec: computev1alpha1.MachineSpec{
+				MachineClassRef: corev1.LocalObjectReference{Name: mc.Name},
+				MachinePoolRef:  &corev1.LocalObjectReference{Name: mp.Name},
+				Volumes: []computev1alpha1.Volume{
+					{
+						Name: "primary",
+						VolumeSource: computev1alpha1.VolumeSource{
+							VolumeRef: &corev1.LocalObjectReference{Name: volume.Name},
+						},
+					},
+					{
+						Name: "secondary",
+						VolumeSource: computev1alpha1.VolumeSource{
+							VolumeRef: &corev1.LocalObjectReference{Name: secondaryVolume.Name},
+						},
+					},
+				},
+				NetworkInterfaces: []computev1alpha1.NetworkInterface{
+					{
+						Name: "primary",
+						NetworkInterfaceSource: computev1alpha1.NetworkInterfaceSource{
+							NetworkInterfaceRef: &corev1.LocalObjectReference{Name: nic.Name},
+						},
+					},
+				},
+			},
+		}
+		Expect(k8sClient.Create(ctx, machine)).To(Succeed())
+
+		By("waiting for the runtime to report the machine, volume and network interface")
+		Eventually(srv).Should(SatisfyAll(
+			HaveField("Machines", HaveLen(1)),
+		))
+		_, iriMachine := GetSingleMapEntry(srv.Machines)
+
+		By("inspecting the iri machine volumes")
+		Expect(iriMachine.Spec.Volumes).To(ConsistOf(&iri.Volume{
+			Name:   "primary",
+			Device: "oda",
+			Connection: &iri.VolumeConnection{
+				Driver: "test",
+				Handle: "testhandle",
+			},
+		}, &iri.Volume{
+			Name:   "secondary",
+			Device: "odb",
+			Connection: &iri.VolumeConnection{
+				Driver: "test",
+				Handle: "testhandle",
+			},
+		}))
+
+		By("patching the secondary volume to be in error state")
+		Eventually(UpdateStatus(secondaryVolume, func() {
+			secondaryVolume.Status.State = storagev1alpha1.VolumeStateError
+		})).Should(Succeed())
+
+		By("verifying only erroneous volume is detached")
+		Eventually(func() []*iri.Volume {
+			return srv.Machines[iriMachine.Metadata.Id].Spec.Volumes
+		}).Should(SatisfyAll((ConsistOf(&iri.Volume{
+			Name:   "primary",
+			Device: "oda",
+			Connection: &iri.VolumeConnection{
+				Driver: "test",
+				Handle: "testhandle",
+			},
+		}))))
+	})
 })
 
 func GetSingleMapEntry[K comparable, V any](m map[K]V) (K, V) {

@@ -1,7 +1,7 @@
 ---
 title: Object Storage
 
-oep-number: 5
+iep-number: 5
 
 creation-date: 2022-12-19
 
@@ -9,17 +9,17 @@ status: implementable
 
 authors:
 
-- @lukasfrank
-- @gehoern
+- "@lukasfrank"
+- "@gehoern"
 
 reviewers:
 
-- @adracus
-- @MalteJ
+- "@adracus"
+- "@MalteJ"
 
 ---
 
-# OEP-5: Object Storage
+# IEP-5: Object Storage
 
 ## Table of Contents
 

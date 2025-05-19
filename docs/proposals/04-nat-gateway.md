@@ -1,7 +1,7 @@
 ---
 title: NAT Gateway
 
-oep-number: 4
+iep-number: 4
 
 creation-date: 2022-18-10
 
@@ -9,19 +9,19 @@ status: implementable
 
 authors:
 
-- @gehoern
-- @adracus
+- "@gehoern"
+- "@adracus"
 
 reviewers:
 
-- @MalteJ
-- @adracus
-- @afritzler
-- @guvenc
+- "@MalteJ"
+- "@adracus"
+- "@afritzler"
+- "@guvenc"
 
 ---
 
-# OEP-4: Cloud Nate Gateway
+# IEP-4: Cloud Nate Gateway
 
 ## Table of Contents
 

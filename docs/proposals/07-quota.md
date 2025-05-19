@@ -1,7 +1,7 @@
 ---
 title: Quota
 
-oep-number: 7
+iep-number: 7
 
 creation-date: 2023-01-19
 
@@ -9,17 +9,17 @@ status: implementable
 
 authors:
 
-- @adracus
+- "@adracus"
 
 reviewers:
 
-- @afritzler
-- @gehoern
-- @ManuStoessel
+- "@afritzler"
+- "@gehoern"
+- "@ManuStoessel"
 
 ---
 
-# OEP-7: Quota
+# IEP-7: Quota
 
 ## Table of Contents
 

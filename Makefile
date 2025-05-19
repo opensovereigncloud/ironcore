@@ -12,7 +12,7 @@ BUCKETBROKER_IMG ?= bucketbroker:latest
 IRICTL_BUCKET_IMG ?= irictl-bucket:latest
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.30.3
+ENVTEST_K8S_VERSION = 1.32.0
 
 # Docker image name for the mkdocs based local development setup
 IMAGE=ironcore/documentation
@@ -54,9 +54,9 @@ help: ## Display this help.
 
 .PHONY: manifests
 FILE="config/machinepoollet-broker/broker-rbac/role.yaml"
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: controller-gen ## Generate ClusterRole and CustomResourceDefinition objects.
 	# ironcore-controller-manager
-	$(CONTROLLER_GEN) rbac:roleName=manager-role webhook paths="./internal/controllers/...;./api/..." output:rbac:artifacts:config=config/controller/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="./internal/controllers/...;./api/..." output:rbac:artifacts:config=config/controller/rbac
 
 	# machinepoollet-broker
 	$(CONTROLLER_GEN) rbac:roleName=manager-role paths="./poollet/machinepoollet/controllers/..." output:rbac:artifacts:config=config/machinepoollet-broker/poollet-rbac
@@ -145,11 +145,11 @@ clean-docs: ## Remove all local mkdocs Docker images (cleanup).
 	docker container prune --force --filter "label=project=ironcore_documentation"
 
 .PHONY: test
-test: manifests generate fmt vet test-only ## Run tests.
+test: generate manifests fmt vet test-only ## Run tests.
 
 .PHONY: test-only
 test-only: envtest ## Run *only* the tests - no generation, linting etc.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 .PHONY: extract-openapi
 extract-openapi: envtest openapi-extractor
@@ -360,13 +360,14 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.1.1
 VGOPATH_VERSION ?= v0.1.3
-CONTROLLER_TOOLS_VERSION ?= v0.15.0
+CONTROLLER_TOOLS_VERSION ?= v0.17.2
 GEN_CRD_API_REFERENCE_DOCS_VERSION ?= v0.3.0
 ADDLICENSE_VERSION ?= v1.1.1
 PROTOC_GEN_GOGO_VERSION ?= v1.3.2
-GOIMPORTS_VERSION ?= v0.26.0
-GOLANGCI_LINT_VERSION ?= v1.61.0
-OPENAPI_EXTRACTOR_VERSION ?= v0.1.4
+GOIMPORTS_VERSION ?= v0.31.0
+GOLANGCI_LINT_VERSION ?= v2.0
+OPENAPI_EXTRACTOR_VERSION ?= v0.1.9
+SETUP_ENVTEST_VERSION ?= release-0.20
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -404,7 +405,7 @@ $(VGOPATH): $(LOCALBIN)
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(SETUP_ENVTEST_VERSION)
 
 .PHONY: openapi-extractor
 openapi-extractor: $(OPENAPI_EXTRACTOR) ## Download openapi-extractor locally if necessary.
@@ -439,4 +440,4 @@ $(GOIMPORTS): $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	test -s $(LOCALBIN)/golangci-lint || GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	test -s $(LOCALBIN)/golangci-lint || GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
