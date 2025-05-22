@@ -166,21 +166,23 @@ status:
 ## Migration Path
 
 1. **Phase 1: Preparation**
-   - Implement new Ceph RGW controller
-   - Add Ceph-specific configurations
    - Update API resources
 
-2. **Phase 2: Testing**
+1. **Phase 2: Implementation**
+   - Implement new Ceph RGW controller
+   - Add Ceph-specific configurations
+
+2. **Phase 3: Testing**
    - Test with new implementation
    - Validate S3 compatibility
    - Performance testing
 
-3. **Phase 3: Migration**
+3. **Phase 4: Migration**
    - Gradual migration of existing buckets
    - Validation of migrated buckets
    - Removal of Rook dependency
 
-4. **Phase 4: Cleanup**
+4. **Phase 5: Cleanup**
    - Remove Rook-related code
    - Update documentation
    - Final validation 
