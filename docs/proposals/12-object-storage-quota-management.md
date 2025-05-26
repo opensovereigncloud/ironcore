@@ -81,12 +81,12 @@ status:
   quotaStatus:
     size: 50%
     objects: 50%
-  lastEnforced: "2024-03-19T10:00:00Z"
-  warnings:
-    - type: SizeWarning
+  conditions:
+    - type: QuotaWarning
+      status: "True"
+      reason: SizeApproachingLimit
       message: "Bucket size approaching quota limit"
-      severity: warning
-      timestamp: "2024-03-19T09:55:00Z"
+      lastTransitionTime: "2024-03-19T09:55:00Z"
 ```
 
 ## Implementation Details
@@ -111,8 +111,9 @@ status:
   - Historical usage data
 
 - **Warning System**
-  - Threshold-based warnings
-  - Multiple warning levels
+  - Standard Kubernetes conditions for quota status
+  - Events emitted by the reconciling controller
+  - Warnings visible via `kubectl describe bucket`
   - Configurable notification channels
 
 ## Alternatives
