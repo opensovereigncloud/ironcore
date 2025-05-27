@@ -16,7 +16,6 @@ import (
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 	"github.com/ironcore-dev/ironcore/poollet/machinepoollet/mcm"
 	ironcoreclient "github.com/ironcore-dev/ironcore/utils/client"
-	"github.com/ironcore-dev/ironcore/utils/quota"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -83,10 +82,11 @@ func (r *MachinePoolReconciler) supportsMachineClass(ctx context.Context, machin
 func (r *MachinePoolReconciler) calculateCapacity(
 	ctx context.Context,
 	log logr.Logger,
-	machines []computev1alpha1.Machine,
 	machineClassList []computev1alpha1.MachineClass,
 ) (capacity, allocatable corev1alpha1.ResourceList, supported []corev1.LocalObjectReference, err error) {
 	log.V(1).Info("Determining supported machine classes, capacity and allocatable")
+
+	supportedMachineClasses := make(map[string]struct{}, len(machineClassList))
 
 	capacity = corev1alpha1.ResourceList{}
 	for _, machineClass := range machineClassList {
@@ -99,26 +99,33 @@ func (r *MachinePoolReconciler) calculateCapacity(
 		}
 
 		supported = append(supported, corev1.LocalObjectReference{Name: machineClass.Name})
+		supportedMachineClasses[machineClass.Name] = struct{}{}
 		capacity[corev1alpha1.ClassCountFor(corev1alpha1.ClassTypeMachineClass, machineClass.Name)] = *resource.NewQuantity(quantity, resource.DecimalSI)
 	}
 
-	usedResources := corev1alpha1.ResourceList{}
-	for _, machine := range machines {
-		className := machine.Spec.MachineClassRef.Name
-		res, ok := usedResources[corev1alpha1.ClassCountFor(corev1alpha1.ClassTypeMachineClass, className)]
-		if !ok {
-			usedResources[corev1alpha1.ClassCountFor(corev1alpha1.ClassTypeMachineClass, className)] = *resource.NewQuantity(1, resource.DecimalSI)
-			continue
-		}
-
-		res.Add(resource.MustParse("1"))
+	// Fetch the latest machine class status from the broker.
+	// This ensures allocatable values are reset accurately after controller restarts
+	// and prevents stale capacity from affecting scheduling decisions.
+	// While this call is triggered on every machine pool reconciliation (which is suboptimal),
+	// it serves as a temporary workaround until a more robust, token-based reservation mechanism is introduced.
+	res, err := r.MachineRuntime.Status(ctx, &iri.StatusRequest{})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("error listing machine classes: %w", err)
 	}
 
-	return capacity, quota.SubtractWithNonNegativeResult(capacity, usedResources), supported, nil
+	allocatable = corev1alpha1.ResourceList{}
+	for _, status := range res.MachineClassStatus {
+		_, supports := supportedMachineClasses[status.MachineClass.Name]
+		if supports {
+			allocatable[corev1alpha1.ClassCountFor(corev1alpha1.ClassTypeMachineClass, status.MachineClass.Name)] = *resource.NewQuantity(status.Quantity, resource.DecimalSI)
+		}
+	}
+
+	return capacity, allocatable, supported, nil
 }
 
 func (r *MachinePoolReconciler) updateStatus(ctx context.Context, log logr.Logger, machinePool *computev1alpha1.MachinePool, machines []computev1alpha1.Machine, machineClassList []computev1alpha1.MachineClass) error {
-	capacity, allocatable, supported, err := r.calculateCapacity(ctx, log, machines, machineClassList)
+	capacity, allocatable, supported, err := r.calculateCapacity(ctx, log, machineClassList)
 	if err != nil {
 		return fmt.Errorf("error calculating pool resources:%w", err)
 	}
