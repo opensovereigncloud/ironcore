@@ -5,7 +5,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	"github.com/go-logr/logr"
 
 	computev1alpha1 "github.com/ironcore-dev/ironcore/api/compute/v1alpha1"
 	networkingv1alpha1 "github.com/ironcore-dev/ironcore/api/networking/v1alpha1"
@@ -14,16 +17,15 @@ import (
 	"github.com/ironcore-dev/ironcore/broker/machinebroker/apiutils"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 	clientutils "github.com/ironcore-dev/ironcore/utils/client"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func (s *Server) listAggregateIronCoreMachines(ctx context.Context) ([]AggregateIronCoreMachine, error) {
-	ironcoreMachineList, err := s.listIroncoreMachines(ctx)
+func (s *Server) listAggregateIronCoreMachines(ctx context.Context, filter *iri.MachineFilter) ([]AggregateIronCoreMachine, error) {
+	ironcoreMachineList, err := s.listIroncoreMachines(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("error listing ironcore machines: %w", err)
 	}
@@ -34,6 +36,7 @@ func (s *Server) listAggregateIronCoreMachines(ctx context.Context) ([]Aggregate
 			machinebrokerv1alpha1.ManagerLabel: machinebrokerv1alpha1.MachineBrokerManager,
 		},
 	}
+
 	rd, err := clientutils.NewCachingReaderBuilder(s.cluster.Client()).
 		List(&corev1.SecretList{}, listOpts...).
 		List(&networkingv1alpha1.NetworkList{}, listOpts...).
@@ -55,17 +58,26 @@ func (s *Server) listAggregateIronCoreMachines(ctx context.Context) ([]Aggregate
 	return res, nil
 }
 
-func (s *Server) listIroncoreMachines(ctx context.Context) (*computev1alpha1.MachineList, error) {
+func (s *Server) listIroncoreMachines(ctx context.Context, filter *iri.MachineFilter) (*computev1alpha1.MachineList, error) {
 	ironcoreMachineList := &computev1alpha1.MachineList{}
+	matchingLabels := client.MatchingLabels{
+		machinebrokerv1alpha1.ManagerLabel: machinebrokerv1alpha1.MachineBrokerManager,
+		machinebrokerv1alpha1.CreatedLabel: "true",
+	}
+
+	if filter != nil {
+		for k := range filter.LabelSelector {
+			matchingLabels[k] = filter.LabelSelector[k]
+		}
+	}
+
 	if err := s.cluster.Client().List(ctx, ironcoreMachineList,
 		client.InNamespace(s.cluster.Namespace()),
-		client.MatchingLabels{
-			machinebrokerv1alpha1.ManagerLabel: machinebrokerv1alpha1.MachineBrokerManager,
-			machinebrokerv1alpha1.CreatedLabel: "true",
-		},
+		matchingLabels,
 	); err != nil {
 		return nil, err
 	}
+
 	return ironcoreMachineList, nil
 }
 
@@ -84,7 +96,6 @@ func (s *Server) aggregateIronCoreMachine(
 
 		ignitionSecret = secret
 	}
-
 	aggIronCoreNics := make(map[string]*AggregateIronCoreNetworkInterface)
 	for _, machineNic := range ironcoreMachine.Spec.NetworkInterfaces {
 		switch {
@@ -103,7 +114,6 @@ func (s *Server) aggregateIronCoreMachine(
 			aggIronCoreNics[machineNic.Name] = aggIronCoreNic
 		}
 	}
-
 	aggIronCoreVolumes := make(map[string]*AggregateIronCoreVolume)
 	for _, machineVolume := range ironcoreMachine.Spec.Volumes {
 		switch {
@@ -138,11 +148,12 @@ func (s *Server) getIronCoreMachine(ctx context.Context, id string) (*computev1a
 		if !apierrors.IsNotFound(err) {
 			return nil, fmt.Errorf("error getting ironcore machine %s: %w", id, err)
 		}
-		return nil, status.Errorf(codes.NotFound, "machine %s not found", id)
+		return nil, fmt.Errorf("failed to get machine %s: %w", id, ErrMachineNotFound)
 	}
 	if !apiutils.IsManagedBy(ironcoreMachine, machinebrokerv1alpha1.MachineBrokerManager) || !apiutils.IsCreated(ironcoreMachine) {
-		return nil, status.Errorf(codes.NotFound, "machine %s not found", id)
+		return nil, fmt.Errorf("missing manage label for %s: %w", machinebrokerv1alpha1.MachineBrokerManager, ErrMachineIsntManaged)
 	}
+
 	return ironcoreMachine, nil
 }
 
@@ -155,8 +166,8 @@ func (s *Server) getAggregateIronCoreMachine(ctx context.Context, id string) (*A
 	return s.aggregateIronCoreMachine(ctx, s.cluster.Client(), ironcoreMachine)
 }
 
-func (s *Server) listMachines(ctx context.Context) ([]*iri.Machine, error) {
-	ironcoreMachines, err := s.listAggregateIronCoreMachines(ctx)
+func (s *Server) listMachines(ctx context.Context, filter *iri.MachineFilter) ([]*iri.Machine, error) {
+	ironcoreMachines, err := s.listAggregateIronCoreMachines(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("error listing machines: %w", err)
 	}
@@ -170,6 +181,7 @@ func (s *Server) listMachines(ctx context.Context) ([]*iri.Machine, error) {
 
 		res = append(res, machine)
 	}
+
 	return res, nil
 }
 
@@ -205,7 +217,7 @@ func (s *Server) ListMachines(ctx context.Context, req *iri.ListMachinesRequest)
 	if filter := req.Filter; filter != nil && filter.Id != "" {
 		machine, err := s.getMachine(ctx, filter.Id)
 		if err != nil {
-			if status.Code(err) != codes.NotFound {
+			if !errors.Is(err, ErrMachineNotFound) {
 				return nil, err
 			}
 			return &iri.ListMachinesResponse{
@@ -218,9 +230,20 @@ func (s *Server) ListMachines(ctx context.Context, req *iri.ListMachinesRequest)
 		}, nil
 	}
 
-	machines, err := s.listMachines(ctx)
+	if labelFilter := req.Filter; labelFilter != nil && labelFilter.LabelSelector != nil {
+		machines, err := s.listMachines(ctx, labelFilter)
+		if err != nil {
+			return nil, convertInternalErrorToGRPC(err)
+		}
+
+		return &iri.ListMachinesResponse{
+			Machines: machines,
+		}, nil
+	}
+
+	machines, err := s.listMachines(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, convertInternalErrorToGRPC(err)
 	}
 
 	machines = s.filterMachines(machines, req.Filter)
