@@ -257,12 +257,33 @@ func (r *MachineReconciler) getExistingIRIVolumesForMachine(
 		log := log.WithValues("Volume", iriVolume.Name)
 
 		desiredIRIVolume, ok := desiredIRIVolumesByName[iriVolume.Name]
+
+		// Volume is up-to-date, keep it as is
 		if ok && proto.Equal(desiredIRIVolume, iriVolume) {
 			log.V(1).Info("Existing IRI volume is up-to-date")
 			iriVolumes = append(iriVolumes, iriVolume)
 			continue
 		}
 
+		// Volume exists but only size changed, update it in-place
+		if ok && r.shouldUpdateVolumeSize(iriVolume, desiredIRIVolume) {
+			log.Info("Updating volume size",
+				"CurrentSize", iriVolume.Connection.EffectiveStorageBytes,
+				"DesiredSize", desiredIRIVolume.Connection.EffectiveStorageBytes,
+			)
+			_, err := r.MachineRuntime.UpdateVolume(ctx, &iri.UpdateVolumeRequest{
+				MachineId: iriMachine.Metadata.Id,
+				Volume:    desiredIRIVolume,
+			})
+			if err != nil {
+				errs = append(errs, fmt.Errorf("[volume %s] %w", iriVolume.Name, err))
+				continue
+			}
+			iriVolumes = append(iriVolumes, desiredIRIVolume)
+			continue
+		}
+
+		// Detach volume if not desired or has other changes
 		log.V(1).Info("Detaching outdated IRI volume")
 		_, err := r.MachineRuntime.DetachVolume(ctx, &iri.DetachVolumeRequest{
 			MachineId: iriMachine.Metadata.Id,
@@ -279,6 +300,13 @@ func (r *MachineReconciler) getExistingIRIVolumesForMachine(
 		return nil, errors.Join(errs...)
 	}
 	return iriVolumes, nil
+}
+
+func (r *MachineReconciler) shouldUpdateVolumeSize(iriVolume, desiredIRIVolume *iri.Volume) bool {
+	return iriVolume.Connection != nil && desiredIRIVolume.Connection != nil &&
+		iriVolume.Connection.Driver == desiredIRIVolume.Connection.Driver &&
+		iriVolume.Connection.Handle == desiredIRIVolume.Connection.Handle &&
+		iriVolume.Connection.EffectiveStorageBytes != desiredIRIVolume.Connection.EffectiveStorageBytes
 }
 
 func (r *MachineReconciler) getNewIRIVolumesForMachine(
