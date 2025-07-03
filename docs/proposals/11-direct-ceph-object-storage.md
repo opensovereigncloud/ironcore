@@ -71,7 +71,7 @@ The new architecture will consist of:
 
 ### API Resources
 
-The existing `Bucket`, `BucketClass`, and `BucketPool` resources will be maintained, but with enhanced status reporting and additional fields for Ceph-specific configurations.
+The existing `Bucket`, `BucketClass`, and `BucketPool` resources will be maintained.
 
 #### Bucket
 

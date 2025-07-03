@@ -25,14 +25,17 @@ reviewers:
     - [Goals](#goals)
     - [Non-Goals](#non-goals)
 - [Proposal](#proposal)
-    - [Quota Resource](#quota-resource)
+    - [ResourceQuota Extension](#resourcequota-extension)
+    - [New Resource Scope](#new-resource-scope)
+    - [New Scope Selector Operator](#new-scope-selector-operator)
+    - [Object Storage Resource Types](#object-storage-resource-types)
     - [Implementation Details](#implementation-details)
 - [Alternatives](#alternatives)
 - [Implementation Plan](#implementation-plan)
 
 ## Summary
 
-This proposal outlines the implementation of quota management for the object storage system. It enables administrators to control resource usage by setting limits on bucket size, object count, and individual upload sizes, with configurable enforcement policies and grace periods.
+This proposal extends the existing quota management system (IEP-7) to support object storage quotas for buckets. It enables administrators to control resource usage by setting limits on bucket size, object count, and individual upload sizes using the existing `ResourceQuota` mechanism with new scope selectors for bucket-specific quotas.
 
 ## Motivation
 
@@ -42,14 +45,16 @@ Resource management is crucial for any storage system to prevent:
 - Cost overruns
 - Performance degradation
 
+The existing quota system (IEP-7) provides a solid foundation for resource management but lacks support for object storage-specific quotas and bucket-level targeting.
+
 ### Goals
 
-- Enable quota enforcement at bucket level
-- Support size-based and object count quotas
-- Implement configurable enforcement policies
-- Provide quota status monitoring
-- Maintain S3 compatibility
-- Ensure backward compatibility with existing buckets
+- Extend existing `ResourceQuota` to support object storage quotas
+- Enable quota enforcement at bucket level using scope selectors
+- Support size-based and object count quotas for buckets
+- Maintain backward compatibility with existing quota system
+- Ensure S3 compatibility
+- Provide quota status monitoring through existing mechanisms
 
 ### Non-Goals
 
@@ -57,92 +62,157 @@ Resource management is crucial for any storage system to prevent:
 - Automatic quota adjustment
 - Cross-bucket quota management
 - Cost-based quota management
+- Creating new quota resource types
 
 ## Proposal
 
-### Quota Resource
+### ResourceQuota Extension
 
-```yaml
-apiVersion: storage.ironcore.dev/v1alpha1
-kind: BucketQuota
-metadata:
-  name: bucket-1-quota
-spec:
-  bucketRef:
-    name: bucket-1
-  limits:
-    maxSize: 100Gi
-    maxObjects: 1000000
-status:
-  enabled: true
-  currentUsage:
-    size: 50Gi
-    objectCount: 500000
-  quotaStatus:
-    size: 50%
-    objects: 50%
-  conditions:
-    - type: QuotaWarning
-      status: "True"
-      reason: SizeApproachingLimit
-      message: "Bucket size approaching quota limit"
-      lastTransitionTime: "2024-03-19T09:55:00Z"
+This proposal extends the existing `ResourceQuota` system by adding new resource types and scope selectors for object storage. No new resource types are introduced; instead, we leverage the existing `ResourceQuota` infrastructure.
+
+### New Resource Scope
+
+Add a new resource scope to target specific buckets:
+
+```go
+const (
+    // ResourceScopeBucketName refers to the name of a specific bucket
+    ResourceScopeBucketName ResourceScope = "Bucket.Name"
+)
 ```
 
-## Implementation Details
+This scope allows quotas to target specific buckets by name, enabling fine-grained quota management.
 
-### 1. Quota Enforcement
+### New Scope Selector Operator
 
-- **Size-based Quotas**
-  - Total bucket size limit
-  - Per-upload size limit
-  - Real-time size tracking
+Add a new operator for exact matching:
 
-- **Object Count Quotas**
-  - Maximum objects per bucket
-  - Object count tracking
-  - Batch operation handling
+```go
+const (
+    ResourceScopeSelectorOperatorEquals ResourceScopeSelectorOperator = "Equals"
+)
+```
 
-### 2. Monitoring and Reporting
+This operator enables exact matching for bucket names and other resources, complementing the existing `In`, `NotIn`, `Exists`, and `DoesNotExist` operators.
 
-- **Quota Status**
-  - Current usage tracking
-  - Percentage-based status
-  - Historical usage data
+### Object Storage Resource Types
 
-- **Warning System**
-  - Standard Kubernetes conditions for quota status
-  - Events emitted by the reconciling controller
-  - Warnings visible via `kubectl describe bucket`
-  - Configurable notification channels
+Extend the existing resource types to include object storage-specific resources:
+
+| Resource Name | Description |
+|---------------|-------------|
+| `requests.storage` | Total bucket size limit (existing, extended for buckets) |
+| `count/buckets.storage.ironcore.dev` | Number of buckets (existing) |
+| `requests.objects` | Total object count per bucket |
+
+
+### Implementation Details
+
+#### 1. Bucket Evaluator Extension
+
+Extend the existing bucket evaluator in `internal/quota/evaluator/storage/bucket.go` to support:
+
+- Object count tracking
+- Upload size limits
+- Bucket name scope matching
+
+#### 2. Usage Calculation
+
+Extend the bucket evaluator's `Usage` method to calculate object storage metrics:
+
+#### 3. Quota Enforcement
+
+Quota enforcement will be handled by the existing admission controller, which will:
+
+- Check bucket creation/update requests against applicable quotas
+- Validate upload size limits during object upload operations
+- Reject operations that would exceed quota limits
+
+### Example Manifests
+
+#### Limit total storage across all buckets in a namespace:
+
+```yaml
+apiVersion: core.ironcore.dev/v1alpha1
+kind: ResourceQuota
+metadata:
+  name: bucket-storage-limit
+spec:
+  hard:
+    requests.storage: 100Gi
+    count/buckets.storage.ironcore.dev: 10
+```
+
+#### Limit storage for a specific bucket:
+
+```yaml
+apiVersion: core.ironcore.dev/v1alpha1
+kind: ResourceQuota
+metadata:
+  name: specific-bucket-limit
+spec:
+  hard:
+    requests.storage: 50Gi
+    requests.objects: 1000000
+  scopeSelector:
+    matchExpressions:
+    - scopeName: Bucket.Name
+      operator: Equals
+      values:
+        - my-bucket
+```
+
+#### Limit storage for buckets of a specific class:
+
+```yaml
+apiVersion: core.ironcore.dev/v1alpha1
+kind: ResourceQuota
+metadata:
+  name: premium-bucket-limit
+spec:
+  hard:
+    requests.storage: 200Gi
+    requests.objects: 5000000
+  scopeSelector:
+    matchExpressions:
+    - scopeName: BucketClass
+      operator: In
+      values:
+        - premium
+```
 
 ## Alternatives
 
 1. **Use Ceph's Built-in Quota System**
    - Pros: Native integration, better performance
-   - Cons: Less flexible, Ceph-specific
+   - Cons: Less flexible, Ceph-specific, doesn't integrate with existing quota system
 
 2. **Implement at Storage Layer**
    - Pros: More efficient enforcement
-   - Cons: Less flexible, harder to manage
+   - Cons: Less flexible, harder to manage, doesn't leverage existing quota infrastructure
 
-3. **Use External Quota Management**
+3. **Create New BucketQuota Resource**
+   - Pros: Dedicated resource for bucket quotas
+   - Cons: Duplicates existing quota functionality, increases complexity
+
+4. **Use External Quota Management**
    - Pros: Separation of concerns
    - Cons: Additional complexity, potential sync issues
 
 ## Implementation Plan
 
-### Phase 1: Core Quota Implementation
-1. Implement BucketQuota resource
-2. Implement BucketQuota enabling/disabling
-3. Implement size and object count tracking
+### Phase 1: Core Extensions
+1. Add `ResourceScopeBucketName` constant
+2. Add `ResourceScopeSelectorOperatorEquals` constant
+3. Extend bucket evaluator to support new scope and operator
+4. Add object count and upload size resource types
 
-### Phase 2: Monitoring and Integration
-1. Implement quota status monitoring
-2. Add historical data collection
-3. Set up notification system
+### Phase 2: Usage Tracking
+1. Implement bucket usage calculation from storage provider
+2. Extend bucket evaluator to track object counts and sizes
+3. Add metrics collection for quota monitoring
 
-### Phase 3: Testing and Validation
-1. Performance testing
-2. Edge case handling
-3. Documentation and examples 
+### Phase 3: Enforcement and Testing
+1. Extend admission controller for bucket-specific quota enforcement
+2. Add integration tests for bucket quotas
+3. Update documentation and examples 
