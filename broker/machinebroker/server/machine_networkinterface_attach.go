@@ -6,8 +6,12 @@ package server
 import (
 	"context"
 	"fmt"
+	"maps"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
+
 	commonv1alpha1 "github.com/ironcore-dev/ironcore/api/common/v1alpha1"
 	computev1alpha1 "github.com/ironcore-dev/ironcore/api/compute/v1alpha1"
 	networkingv1alpha1 "github.com/ironcore-dev/ironcore/api/networking/v1alpha1"
@@ -17,9 +21,8 @@ import (
 	"github.com/ironcore-dev/ironcore/broker/machinebroker/apiutils"
 	iri "github.com/ironcore-dev/ironcore/iri/apis/machine/v1alpha1"
 	machinepoolletv1alpha1 "github.com/ironcore-dev/ironcore/poollet/machinepoollet/api/v1alpha1"
-	"github.com/ironcore-dev/ironcore/utils/maps"
-	"google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
+	maputils "github.com/ironcore-dev/ironcore/utils/maps"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,12 +46,12 @@ func (s *Server) getIronCoreNetworkInterfaceConfig(iriNIC *iri.NetworkInterface)
 	nicLabelsString, nicLabelsPresent := sourceAttr[machinepoolletv1alpha1.NICLabelsAttributeKey]
 	networkLabelsString, networkLabelsPresent := sourceAttr[machinepoolletv1alpha1.NetworkLabelsAttributeKey]
 
-	nicLabels, err := maps.UnmarshalLabels(nicLabelsString, nicLabelsPresent)
+	nicLabels, err := maputils.UnmarshalLabels(nicLabelsString, nicLabelsPresent)
 	if err != nil {
 		return nil, err
 	}
 
-	networkLabels, err := maps.UnmarshalLabels(networkLabelsString, networkLabelsPresent)
+	networkLabels, err := maputils.UnmarshalLabels(networkLabelsString, networkLabelsPresent)
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +64,8 @@ func (s *Server) getIronCoreNetworkInterfaceConfig(iriNIC *iri.NetworkInterface)
 		newAttributes[k] = v
 	}
 
-	newAttributes[machinepoolletv1alpha1.NICLabelsAttributeKey] = string(maps.MustMarshalJSON(preparedNicLabels))
-	newAttributes[machinepoolletv1alpha1.NetworkLabelsAttributeKey] = string(maps.MustMarshalJSON(preparedNetworkLabels))
+	newAttributes[machinepoolletv1alpha1.NICLabelsAttributeKey] = string(maputils.MustMarshalJSON(preparedNicLabels))
+	newAttributes[machinepoolletv1alpha1.NetworkLabelsAttributeKey] = string(maputils.MustMarshalJSON(preparedNetworkLabels))
 
 	return &IronCoreNetworkInterfaceConfig{
 		Name:       iriNIC.Name,
@@ -82,7 +85,7 @@ func (s *Server) createIronCoreNetworkInterface(
 	log.V(1).Info("Getting network for handle")
 
 	networkLabelsString, networkLabelsPresent := cfg.Attributes[machinepoolletv1alpha1.NetworkLabelsAttributeKey]
-	networkLabels, err := maps.UnmarshalLabels(networkLabelsString, networkLabelsPresent)
+	networkLabels, err := maputils.UnmarshalLabels(networkLabelsString, networkLabelsPresent)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -90,6 +93,10 @@ func (s *Server) createIronCoreNetworkInterface(
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting network: %w", err)
 	}
+
+	nicAttributes := maps.Clone(cfg.Attributes)
+	delete(nicAttributes, machinepoolletv1alpha1.NICLabelsAttributeKey)
+	delete(nicAttributes, machinepoolletv1alpha1.NetworkLabelsAttributeKey)
 
 	ironcoreNic := &networkingv1alpha1.NetworkInterface{
 		ObjectMeta: metav1.ObjectMeta{
@@ -108,17 +115,17 @@ func (s *Server) createIronCoreNetworkInterface(
 			MachineRef: s.optionalLocalUIDReference(optIronCoreMachine),
 			IPFamilies: s.getIronCoreIPsIPFamilies(cfg.IPs),
 			IPs:        s.ironcoreIPsToIronCoreIPSources(cfg.IPs),
-			Attributes: cfg.Attributes,
+			Attributes: nicAttributes,
 		},
 	}
 
 	nicLabelsString, nicLabelsPresent := cfg.Attributes[machinepoolletv1alpha1.NICLabelsAttributeKey]
-	nicLabels, err := maps.UnmarshalLabels(nicLabelsString, nicLabelsPresent)
+	nicLabels, err := maputils.UnmarshalLabels(nicLabelsString, nicLabelsPresent)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	ironcoreNic.Labels = maps.AppendMap(nicLabels, ironcoreNic.Labels)
+	ironcoreNic.Labels = maputils.AppendMap(nicLabels, ironcoreNic.Labels)
 	log.V(1).Info("Creating ironcore network interface")
 	if err := s.cluster.Client().Create(ctx, ironcoreNic); err != nil {
 		return nil, nil, fmt.Errorf("error creating ironcore network interface: %w", err)
